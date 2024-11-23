@@ -24,7 +24,13 @@
 
         <Grid Grid.Row="2" RowDefinitions="Auto, 5, Auto" ColumnDefinitions="*" Margin="5">
             <StackPanel Orientation="Horizontal">
-                <CheckBox IsChecked="{Binding ScanOnly}">Scan Only</CheckBox>
+
+                <StackPanel Orientation="Horizontal">
+                    <Label>Log Lines</Label>
+                    <NumericUpDown Value="{Binding NumberOfLinesShown}" />
+                </StackPanel>
+
+                <CheckBox Margin="5,0,0,0" IsChecked="{Binding ScanOnly}">Scan Only</CheckBox>
             </StackPanel>
 
             <Button Grid.Row="2" Click="OnStartScan">Scan Images, Videos and update EXIF Data...</Button>
@@ -39,7 +45,6 @@
                       GridLinesVisibility="All"
                       SelectionMode="Single"
                       BorderThickness="1"
-
                       VerticalScrollBarVisibility="Visible"
                       BorderBrush="Gray">
                 <DataGrid.Columns>

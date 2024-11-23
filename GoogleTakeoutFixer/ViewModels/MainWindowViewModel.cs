@@ -48,6 +48,17 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
+    public int NumberOfLinesShown
+    {
+        get => _settings.NumberOfLinesShown;
+        set
+        {
+            if (_settings?.NumberOfLinesShown == value) return;
+            _settings!.NumberOfLinesShown = value;
+            this.RaisePropertyChanged();
+        }
+    }
+
     public ObservableCollection<ProgressViewModel> ProgressViewModels { get; } = [];
 
     public MainWindowViewModel()
@@ -58,18 +69,22 @@ public class MainWindowViewModel : ViewModelBase
             .UseJsonFile(path)
             .Build();
 
+        if (_settings.NumberOfLinesShown < 10)
+        {
+            _settings.NumberOfLinesShown = 20;
+        }
+
         _fixGoogleTakeout.ProgressChanged += (sender, args) =>
         {
             var item = new ProgressViewModel(args);
             Dispatcher.UIThread.InvokeAsync(() =>
             {
                 ProgressViewModels.Add(item);
-                while (ProgressViewModels.Count >= 20)
+                while (ProgressViewModels.Count >= _settings.NumberOfLinesShown)
                 {
                     ProgressViewModels.RemoveAt(0);
                 }
             });
-            
         };
     }
 
