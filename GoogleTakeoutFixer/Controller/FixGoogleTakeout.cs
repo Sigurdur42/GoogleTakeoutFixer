@@ -26,8 +26,36 @@ public class FixGoogleTakeout
 
     public void Scan(ILocalSettings settings)
     {
-        _data.Clear();
-        ScanInputFolder(settings.InputFolder);
+        try
+        {
+            _data.Clear();
+            ScanInputFolder(settings.InputFolder);
+
+            if (settings.ScanOnly)
+            {
+                return;
+            }
+
+            CopyAndProcess(settings);
+        }
+        finally
+        {
+            _progress.CurrentAction = "Done.";
+            InvokeProgress();
+        }
+    }
+
+    private void CopyAndProcess(ILocalSettings settings)
+    {
+        var outputFolder = settings.OutputFolder;
+        if (!Directory.Exists(outputFolder))
+        {
+            _progress.CurrentAction = $"Creating output folder: {outputFolder}.";
+            InvokeProgress();
+            Directory.Exists(outputFolder);
+        }
+        
+        // TODO: Hier weitermachen
     }
 
     private void ScanInputFolder(string inputFolder)
@@ -51,9 +79,6 @@ public class FixGoogleTakeout
 
         _progress.CurrentAction =
             $"{total} files ({missingJson.Length} json files missing, {photos} photos, {total - photos} videos).";
-        InvokeProgress();
-
-        _progress.CurrentAction = "Done.";
         InvokeProgress();
     }
 
