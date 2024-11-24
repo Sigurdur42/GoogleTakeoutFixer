@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using GoogleTakeoutFixer.Models;
+using SharpExifTool;
 
 namespace GoogleTakeoutFixer.Controller;
 
@@ -21,6 +22,7 @@ public class FixGoogleTakeout
     };
 
     private readonly List<ImageData> _data = [];
+
 
     public event EventHandler<ProgressEventArgs>? ProgressChanged;
 
@@ -47,6 +49,8 @@ public class FixGoogleTakeout
 
     private void CopyAndProcess(ILocalSettings settings)
     {
+        using var exiftool = new SharpExifTool.ExifTool();
+
         var outputFolder = settings.OutputFolder;
         if (!Directory.Exists(outputFolder))
         {
@@ -63,12 +67,12 @@ public class FixGoogleTakeout
             _progress.FilesDone = index;
             _progress.CurrentAction = $"Updating file {file.Image}...";
             InvokeProgress();
-            
-            CopyAndUpdateSingleFile(settings, file);
+
+            CopyAndUpdateSingleFile(settings, file, exiftool);
         }
     }
 
-    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data)
+    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data, ExifTool exiftool)
     {
         var targetImagePart = data.Image.Substring(
             settings.InputFolder.Length,
@@ -83,9 +87,27 @@ public class FixGoogleTakeout
                 InvokeProgress();
                 targetFile.Directory.Create();
             }
+
             File.Copy(data.Image, targetFile.FullName, true);
-            
-            // TODO: Handle Exif Daten
+
+            if (!string.IsNullOrWhiteSpace(data.JsonData) && File.Exists(data.JsonData))
+            {
+                var result = exiftool.Execute(
+                    "-dateFormat",
+                    "%s",
+                    " -tagsfromfile",
+                    data.JsonData,
+                    "-DateTimeOriginal<PhotoTakenTimeTimestamp",
+                    "-FileCreateDate<PhotoTakenTimeTimestamp",
+                    "-FileModifyDate<PhotoTakenTimeTimestamp" ,
+                    "-overwrite_original",
+                    
+                    // Last argument has to be the file
+                    targetFile.FullName
+                );
+                _progress.CurrentAction = $"({result}) Updated EXIF of {targetFile.FullName}.";
+                InvokeProgress();
+            }
         }
         catch (Exception e)
         {
@@ -234,7 +256,7 @@ public class FixGoogleTakeout
         };
         ProgressChanged?.Invoke(this, progress);
     }
-    
+
     private void InvokeError()
     {
         var progress = new ProgressEventArgs()

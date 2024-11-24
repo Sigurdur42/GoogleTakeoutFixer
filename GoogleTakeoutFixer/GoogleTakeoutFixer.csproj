@@ -23,5 +23,6 @@
         <PackageReference Include="Config.Net.Yaml" Version="5.2.0" />
         <PackageReference Include="Semi.Avalonia" Version="11.2.0-beta1" />
         <PackageReference Include="Semi.Avalonia.DataGrid" Version="11.1.0.5-beta1" />
+        <PackageReference Include="SharpExifTool" Version="12.87.0.1" />
     </ItemGroup>
 </Project>
