@@ -68,12 +68,14 @@ public class FixGoogleTakeout
             _progress.CurrentAction = $"Updating file {file.Image}...";
             InvokeProgress();
 
-            CopyAndUpdateSingleFile(settings, file, exiftool);
+            CopyAndUpdateSingleFile(settings, file);
         }
     }
 
-    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data, ExifTool exiftool)
+    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data)
     {
+        using var exiftool = new SharpExifTool.ExifTool();
+        
         var targetImagePart = data.Image.Substring(
             settings.InputFolder.Length,
             data.Image.Length - settings.InputFolder.Length);
@@ -98,7 +100,7 @@ public class FixGoogleTakeout
                     " -tagsfromfile",
                     data.JsonData,
                     "-DateTimeOriginal<PhotoTakenTimeTimestamp",
-                    "-FileCreateDate<PhotoTakenTimeTimestamp",
+                    // "-FileCreateDate<PhotoTakenTimeTimestamp",
                     "-FileModifyDate<PhotoTakenTimeTimestamp" ,
                     "-overwrite_original",
                     
