@@ -15,6 +15,31 @@ public class MainWindowViewModel : ViewModelBase
     private readonly ILocalSettings _settings;
     private readonly FixGoogleTakeout _fixGoogleTakeout = new();
 
+    private int _progressMax = 0;
+    private int _progressValue = 0;
+    
+    public int ProgressMax
+    {
+        get => _progressMax;
+        set
+        {
+            if (_progressMax == value) return;
+            _progressMax = value;
+            this.RaisePropertyChanged();
+        }
+    }
+    
+    public int ProgressValue
+    {
+        get => _progressValue;
+        set
+        {
+            if (_progressValue == value) return;
+            _progressValue = value;
+            this.RaisePropertyChanged();
+        }
+    }
+    
     public string SourceFolder
     {
         get => _settings.InputFolder;
@@ -80,6 +105,8 @@ public class MainWindowViewModel : ViewModelBase
             Dispatcher.UIThread.InvokeAsync(() =>
             {
                 ProgressViewModels.Add(item);
+                ProgressMax = args.FilesTotal;
+                ProgressValue = args.FilesDone;
                 while (ProgressViewModels.Count >= _settings.NumberOfLinesShown)
                 {
                     ProgressViewModels.RemoveAt(0);

@@ -8,7 +8,7 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="GoogleTakeoutFixer">
-    
+
     <Grid RowDefinitions="Auto, 5, Auto,5, *" x:Name="RootGrid" HorizontalAlignment="Stretch"
           VerticalAlignment="Stretch">
         <Grid RowDefinitions="Auto, Auto, Auto" ColumnDefinitions="Auto, *, Auto" Margin="5">
@@ -36,9 +36,17 @@
             <Button Grid.Row="2" Click="OnStartScan">Scan Images, Videos and update EXIF Data...</Button>
         </Grid>
 
-        <Grid Grid.Row="4">
+        <Grid Grid.Row="4" RowDefinitions="Auto, *">
+            <ProgressBar Grid.Row="0" 
+                         Maximum="{Binding ProgressMax}"
+                         Minimum="0" 
+                         Value="{Binding ProgressValue}" 
+                         Height="16"
+                         ShowProgressText="True"
+                         />
             <DataGrid VerticalAlignment="Stretch"
                       Margin="0"
+                      Grid.Row="1"
                       ItemsSource="{Binding ProgressViewModels}"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
