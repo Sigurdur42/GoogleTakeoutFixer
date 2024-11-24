@@ -54,8 +54,44 @@ public class FixGoogleTakeout
             InvokeProgress();
             Directory.Exists(outputFolder);
         }
-        
-        // TODO: Hier weitermachen
+
+        var index = 0;
+        _progress.FilesTotal = _data.Count;
+        foreach (var file in _data)
+        {
+            ++index;
+            _progress.FilesDone = index;
+            _progress.CurrentAction = $"Updating file {file.Image}...";
+            InvokeProgress();
+            
+            CopyAndUpdateSingleFile(settings, file);
+        }
+    }
+
+    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data)
+    {
+        var targetImagePart = data.Image.Substring(
+            settings.InputFolder.Length,
+            data.Image.Length - settings.InputFolder.Length);
+        var targetFile = new FileInfo(Path.Combine(settings.OutputFolder, targetImagePart));
+
+        try
+        {
+            if (!targetFile.Directory!.Exists)
+            {
+                _progress.CurrentAction = $"Creating output folder: {targetFile.Directory}.";
+                InvokeProgress();
+                targetFile.Directory.Create();
+            }
+            File.Copy(data.Image, targetFile.FullName, true);
+            
+            // TODO: Handle Exif Daten
+        }
+        catch (Exception e)
+        {
+            _progress.CurrentAction = $"Failed to copy image: {data.Image} to {targetFile} ({e.Message})";
+            InvokeError();
+        }
     }
 
     private void ScanInputFolder(string inputFolder)
@@ -192,7 +228,19 @@ public class FixGoogleTakeout
         var progress = new ProgressEventArgs()
         {
             CurrentAction = _progress.CurrentAction,
-            IsError = _progress.IsError,
+            IsError = false,
+            FilesDone = _progress.FilesDone,
+            FilesTotal = _progress.FilesTotal,
+        };
+        ProgressChanged?.Invoke(this, progress);
+    }
+    
+    private void InvokeError()
+    {
+        var progress = new ProgressEventArgs()
+        {
+            CurrentAction = _progress.CurrentAction,
+            IsError = true,
             FilesDone = _progress.FilesDone,
             FilesTotal = _progress.FilesTotal,
         };

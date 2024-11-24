@@ -8,9 +8,9 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="GoogleTakeoutFixer">
-
-
-    <Grid RowDefinitions="Auto, 5, Auto,5, *" x:Name="RootGrid">
+    
+    <Grid RowDefinitions="Auto, 5, Auto,5, *" x:Name="RootGrid" HorizontalAlignment="Stretch"
+          VerticalAlignment="Stretch">
         <Grid RowDefinitions="Auto, Auto, Auto" ColumnDefinitions="Auto, *, Auto" Margin="5">
             <Label Grid.Column="0" Grid.Row="0">Source folder</Label>
             <Label Grid.Column="0" Grid.Row="1">Target Folder</Label>
