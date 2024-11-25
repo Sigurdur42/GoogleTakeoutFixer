@@ -104,6 +104,10 @@ public class FixGoogleTakeout
                     "-FileModifyDate<PhotoTakenTimeTimestamp" ,
                     "-overwrite_original",
                     
+                    // Handle potentially incorrect maker notes
+                    // See https://exiftool.org/faq.html#Q15
+                    "-F",
+                    
                     // Last argument has to be the file
                     targetFile.FullName
                 );
