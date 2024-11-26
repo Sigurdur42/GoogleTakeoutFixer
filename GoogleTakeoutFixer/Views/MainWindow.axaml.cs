@@ -72,4 +72,9 @@ public partial class MainWindow : Window
             
         }
     }
+
+    private void OnCancelProcessing(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.CancelProcessing();
+    }
 }

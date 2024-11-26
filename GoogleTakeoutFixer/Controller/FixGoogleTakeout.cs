@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using GoogleTakeoutFixer.Models;
+using Microsoft.VisualBasic.FileIO;
 using SharpExifTool;
 
 namespace GoogleTakeoutFixer.Controller;
@@ -24,6 +26,15 @@ public class FixGoogleTakeout
 
     private readonly List<ImageData> _data = [];
 
+    private bool _cancelRunning = false;
+
+    public void CancelRunning()
+    {
+        _cancelRunning = true;
+        _progress.CurrentAction = "Canceling...";
+        InvokeProgress();
+    }
+
 
     public event EventHandler<ProgressEventArgs>? ProgressChanged;
 
@@ -31,7 +42,9 @@ public class FixGoogleTakeout
     {
         try
         {
+            _cancelRunning = false;
             _data.Clear();
+            _progress.FilesDone = 0;
             ScanInputFolder(settings.InputFolder);
 
             if (settings.ScanOnly)
@@ -60,23 +73,23 @@ public class FixGoogleTakeout
             Directory.Exists(outputFolder);
         }
 
-        var index = 0;
         _progress.FilesTotal = _data.Count;
-        foreach (var file in _data)
+
+        Parallel.ForEach(_data, file =>
         {
-            ++index;
-            _progress.FilesDone = index;
-            _progress.CurrentAction = $"Updating file {file.Image}...";
-            InvokeProgress();
+            if (_cancelRunning)
+            {
+                return;
+            }
 
             CopyAndUpdateSingleFile(settings, file);
-        }
+        });
     }
 
     private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data)
     {
         using var exiftool = new SharpExifTool.ExifTool();
-        
+
         var targetImagePart = data.Image.Substring(
             settings.InputFolder.Length,
             data.Image.Length - settings.InputFolder.Length);
@@ -93,7 +106,7 @@ public class FixGoogleTakeout
 
             var stopwatch = Stopwatch.StartNew();
             File.Copy(data.Image, targetFile.FullName, true);
-var copyElapsed = stopwatch.Elapsed;
+            var copyElapsed = stopwatch.Elapsed;
             if (!string.IsNullOrWhiteSpace(data.JsonData) && File.Exists(data.JsonData))
             {
                 var result = exiftool.Execute(
@@ -103,27 +116,35 @@ var copyElapsed = stopwatch.Elapsed;
                     data.JsonData,
                     "-DateTimeOriginal<PhotoTakenTimeTimestamp",
                     // "-FileCreateDate<PhotoTakenTimeTimestamp",
-                    "-FileModifyDate<PhotoTakenTimeTimestamp" ,
+                    "-FileModifyDate<PhotoTakenTimeTimestamp",
                     "-overwrite_original",
-                    
+
                     // Handle potentially incorrect maker notes
                     // See https://exiftool.org/faq.html#Q15
                     "-F",
-                    
+
                     // Last argument has to be the file
                     targetFile.FullName
                 );
-                
+
                 var exifElapsed = stopwatch.Elapsed;
                 stopwatch.Stop();
-                _progress.CurrentAction = $"({result}[{copyElapsed}|{exifElapsed - copyElapsed}]) Updated EXIF of {targetFile.FullName}.";
-                InvokeProgress();
+                _progress.CurrentAction =
+                    $"({result}[{copyElapsed}|{exifElapsed - copyElapsed}]) Copied and updated EXIF of {targetFile.FullName}.";
+            }
+            else
+            {
+                _progress.CurrentAction = $"([{copyElapsed}) Copied {targetFile.FullName}.";
             }
         }
         catch (Exception e)
         {
             _progress.CurrentAction = $"Failed to copy image: {data.Image} to {targetFile} ({e.Message})";
             InvokeError();
+        }
+        finally
+        {
+            InvokeFileDone();
         }
     }
 
@@ -195,17 +216,27 @@ var copyElapsed = stopwatch.Elapsed;
             switch (file.Extension.ToLowerInvariant())
             {
                 case ".jpg":
+                case ".jpeg":
                 case ".png":
+                case ".dng":
+                case ".cr2":
                     isPhoto = true;
                     break;
 
                 case ".mov":
                 case ".mp4":
+                case ".mpg":
                 case ".avi":
                     isPhoto = false;
                     break;
+                
+                case ".json":
+                    // ignore json here
+                    break;
 
                 default:
+                    _progress.CurrentAction = $"Found invalid extension <{file.Extension}> in file <{file.FullName}>.";
+                    InvokeProgress();
                     continue;
             }
 
@@ -258,6 +289,19 @@ var copyElapsed = stopwatch.Elapsed;
 
     private void InvokeProgress()
     {
+        var progress = new ProgressEventArgs()
+        {
+            CurrentAction = _progress.CurrentAction,
+            IsError = false,
+            FilesDone = _progress.FilesDone,
+            FilesTotal = _progress.FilesTotal,
+        };
+        ProgressChanged?.Invoke(this, progress);
+    }
+
+    private void InvokeFileDone()
+    {
+        _progress.FilesDone += 1;
         var progress = new ProgressEventArgs()
         {
             CurrentAction = _progress.CurrentAction,

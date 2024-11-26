@@ -18,19 +18,31 @@ public class MainWindowViewModel : ViewModelBase
 
     private int _progressMax = 0;
     private int _progressValue = 0;
-    private bool _showProgressBar;
-    private Stopwatch _busyTimer = new();
+    private bool _isProcessing;
+    private readonly Stopwatch _busyTimer = new();
+    private string _itemsProgress = "0/0 Files";
 
     public string TimeElapsed => _busyTimer.Elapsed.ToString(@"hh\:mm\:ss");
-    public string TimeRemaining { get; set; }
+    public string TimeRemaining { get; set; } = "Coming soon :)";
 
-    public bool ShowProgressBar
+    public bool IsProcessing
     {
-        get => _showProgressBar;
+        get => _isProcessing;
         set
         {
-            if (_showProgressBar == value) return;
-            _showProgressBar = value;
+            if (_isProcessing == value) return;
+            _isProcessing = value;
+            this.RaisePropertyChanged();
+        }
+    }
+
+    public string ItemsProgress
+    {
+        get => _itemsProgress;
+        set
+        {
+            if (_itemsProgress == value) return;
+            _itemsProgress = value;
             this.RaisePropertyChanged();
         }
     }
@@ -129,8 +141,8 @@ public class MainWindowViewModel : ViewModelBase
                 ProgressViewModels.Insert(0, item);
                 ProgressMax = args.FilesTotal;
                 ProgressValue = args.FilesDone;
-                
-                if (args.FilesTotal > 0)
+
+                if (args.FilesTotal > 0 && args.FilesDone > 0)
                 {
                     var elapsed = _busyTimer.Elapsed;
 
@@ -138,6 +150,8 @@ public class MainWindowViewModel : ViewModelBase
                     TimeRemaining = remaining.ToString(@"hh\:mm\:ss");
                     this.RaisePropertyChanged(nameof(TimeElapsed));
                     this.RaisePropertyChanged(nameof(TimeRemaining));
+
+                    ItemsProgress = $"{args.FilesDone}/{args.FilesTotal} Files";
                 }
             });
         };
@@ -152,13 +166,19 @@ public class MainWindowViewModel : ViewModelBase
             try
             {
                 _busyTimer.Restart();
-                ShowProgressBar = true;
+                IsProcessing = true;
                 _fixGoogleTakeout.Scan(_settings);
             }
             finally
             {
+                IsProcessing = false;
                 _busyTimer.Stop();
             }
         });
+    }
+
+    public void CancelProcessing()
+    {
+        _fixGoogleTakeout.CancelRunning();
     }
 }

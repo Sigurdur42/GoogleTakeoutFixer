@@ -37,20 +37,24 @@
         </Grid>
 
         <Grid Grid.Row="4" RowDefinitions="Auto, *">
-            <Grid ColumnDefinitions="*, Auto, Auto, Auto, Auto" IsVisible="{Binding ShowProgressBar}">
-                <ProgressBar Grid.Row="0"
+            <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto, Auto, Auto, Auto">
+                <TextBlock Grid.Column="0" Margin="0,0,0,0" Text="{Binding ItemsProgress}" />
+                <ProgressBar Grid.Row="0" Grid.Column="1"
                              Maximum="{Binding ProgressMax}"
                              Minimum="0"
                              Value="{Binding ProgressValue}"
                              Height="16"
+                             Margin="10,0,0,0"
                              ShowProgressText="True" />
 
-                <TextBlock Grid.Column="1" Margin="10,0,0,0">Elapsed:</TextBlock>
-                <TextBlock Grid.Column="2" Margin="3,0,0,0" Text="{Binding TimeElapsed}" />
+                <TextBlock Grid.Column="2" Margin="10,0,0,0">Elapsed:</TextBlock>
+                <TextBlock Grid.Column="3" Margin="3,0,0,0" Text="{Binding TimeElapsed}" />
 
-                <TextBlock Grid.Column="3" Margin="10,0,0,0">Remaining:</TextBlock>
-                <TextBlock Grid.Column="4" Margin="3,0,0,0" Text="{Binding TimeRemaining}" />
+                <TextBlock Grid.Column="4" Margin="10,0,0,0">Remaining:</TextBlock>
+                <TextBlock Grid.Column="5" Margin="3,0,0,0" Text="{Binding TimeRemaining}" />
 
+                <Button Classes="Small" Grid.Column="6" Margin="5,0,0,0" IsEnabled="{Binding IsProcessing}"
+                        Click="OnCancelProcessing">Cancel</Button>
             </Grid>
             <ListBox VerticalAlignment="Stretch"
                      Margin="0"
