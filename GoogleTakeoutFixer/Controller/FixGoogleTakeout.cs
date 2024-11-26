@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using GoogleTakeoutFixer.Models;
@@ -90,8 +91,9 @@ public class FixGoogleTakeout
                 targetFile.Directory.Create();
             }
 
+            var stopwatch = Stopwatch.StartNew();
             File.Copy(data.Image, targetFile.FullName, true);
-
+var copyElapsed = stopwatch.Elapsed;
             if (!string.IsNullOrWhiteSpace(data.JsonData) && File.Exists(data.JsonData))
             {
                 var result = exiftool.Execute(
@@ -111,7 +113,10 @@ public class FixGoogleTakeout
                     // Last argument has to be the file
                     targetFile.FullName
                 );
-                _progress.CurrentAction = $"({result}) Updated EXIF of {targetFile.FullName}.";
+                
+                var exifElapsed = stopwatch.Elapsed;
+                stopwatch.Stop();
+                _progress.CurrentAction = $"({result}[{copyElapsed}|{exifElapsed - copyElapsed}]) Updated EXIF of {targetFile.FullName}.";
                 InvokeProgress();
             }
         }

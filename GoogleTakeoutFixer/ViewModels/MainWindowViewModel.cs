@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -17,7 +18,23 @@ public class MainWindowViewModel : ViewModelBase
 
     private int _progressMax = 0;
     private int _progressValue = 0;
-    
+    private bool _showProgressBar;
+    private Stopwatch _busyTimer = new();
+
+    public string TimeElapsed => _busyTimer.Elapsed.ToString(@"hh\:mm\:ss");
+    public string TimeRemaining { get; set; }
+
+    public bool ShowProgressBar
+    {
+        get => _showProgressBar;
+        set
+        {
+            if (_showProgressBar == value) return;
+            _showProgressBar = value;
+            this.RaisePropertyChanged();
+        }
+    }
+
     public int ProgressMax
     {
         get => _progressMax;
@@ -28,7 +45,7 @@ public class MainWindowViewModel : ViewModelBase
             this.RaisePropertyChanged();
         }
     }
-    
+
     public int ProgressValue
     {
         get => _progressValue;
@@ -39,7 +56,7 @@ public class MainWindowViewModel : ViewModelBase
             this.RaisePropertyChanged();
         }
     }
-    
+
     public string SourceFolder
     {
         get => _settings.InputFolder;
@@ -111,6 +128,16 @@ public class MainWindowViewModel : ViewModelBase
                 {
                     ProgressViewModels.RemoveAt(0);
                 }
+
+                if (args.FilesTotal > 0)
+                {
+                    var elapsed = _busyTimer.Elapsed;
+
+                    var remaining = elapsed * args.FilesTotal / args.FilesDone;
+                    TimeRemaining = remaining.ToString(@"hh\:mm\:ss");
+                    this.RaisePropertyChanged(nameof(TimeElapsed));
+                    this.RaisePropertyChanged(nameof(TimeRemaining));
+                }
             });
         };
     }
@@ -121,7 +148,16 @@ public class MainWindowViewModel : ViewModelBase
         Task.Run(() =>
         {
             // TODO: Lock UI while running
-            _fixGoogleTakeout.Scan(_settings);
+            try
+            {
+                _busyTimer.Restart();
+                ShowProgressBar = true;
+                _fixGoogleTakeout.Scan(_settings);
+            }
+            finally
+            {
+                _busyTimer.Stop();
+            }
         });
     }
 }
