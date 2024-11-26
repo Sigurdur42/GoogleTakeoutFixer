@@ -18,7 +18,7 @@
             <TextBox Grid.Row="0" Grid.Column="1" Margin="5,0,5,0" Text="{Binding SourceFolder}" />
             <TextBox Grid.Row="2" Grid.Column="1" Margin="5,0,5,0" Text="{Binding TargetFolder}" />
 
-            <Button Grid.Row="0" Grid.Column="2" Click="OnBrowseInputFolder" >...</Button>
+            <Button Grid.Row="0" Grid.Column="2" Click="OnBrowseInputFolder">...</Button>
             <Button Grid.Row="2" Grid.Column="2" Click="OnBrowseOutputFolder">...</Button>
         </Grid>
 
@@ -52,23 +52,20 @@
                 <TextBlock Grid.Column="4" Margin="3,0,0,0" Text="{Binding TimeRemaining}" />
 
             </Grid>
-            <DataGrid VerticalAlignment="Stretch"
-                      Margin="0"
-                      Grid.Row="1"
-                      ItemsSource="{Binding ProgressViewModels}"
-                      AutoGenerateColumns="False"
-                      IsReadOnly="True"
-                      GridLinesVisibility="All"
-                      SelectionMode="Single"
-                      BorderThickness="1"
-                      VerticalScrollBarVisibility="Visible"
-                      BorderBrush="Gray">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="Date"
-                                        Binding="{Binding Message}" />
-
-                </DataGrid.Columns>
-            </DataGrid>
+            <ListBox VerticalAlignment="Stretch"
+                     Margin="0"
+                     Grid.Row="1"
+                     ItemsSource="{Binding ProgressViewModels}"
+                     SelectionMode="Single"
+                     BorderThickness="1"
+                     DisplayMemberBinding="{Binding Message}"
+                     BorderBrush="Gray">
+                <!-- <DataGrid.Columns> -->
+                <!--     <DataGridTextColumn Header="Date" -->
+                <!--                         Binding="{Binding Message}" /> -->
+                <!-- -->
+                <!-- </DataGrid.Columns> -->
+            </ListBox>
         </Grid>
     </Grid>
 

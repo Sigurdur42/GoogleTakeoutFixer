@@ -111,9 +111,9 @@ public class MainWindowViewModel : ViewModelBase
             .UseJsonFile(path)
             .Build();
 
-        if (_settings.NumberOfLinesShown < 10)
+        if (_settings.NumberOfLinesShown < 1000)
         {
-            _settings.NumberOfLinesShown = 20;
+            _settings.NumberOfLinesShown = 2000;
         }
 
         _fixGoogleTakeout.ProgressChanged += (sender, args) =>
@@ -121,14 +121,15 @@ public class MainWindowViewModel : ViewModelBase
             var item = new ProgressViewModel(args);
             Dispatcher.UIThread.InvokeAsync(() =>
             {
-                ProgressViewModels.Add(item);
-                ProgressMax = args.FilesTotal;
-                ProgressValue = args.FilesDone;
                 while (ProgressViewModels.Count >= _settings.NumberOfLinesShown)
                 {
-                    ProgressViewModels.RemoveAt(0);
+                    ProgressViewModels.Clear();
                 }
 
+                ProgressViewModels.Insert(0, item);
+                ProgressMax = args.FilesTotal;
+                ProgressValue = args.FilesDone;
+                
                 if (args.FilesTotal > 0)
                 {
                     var elapsed = _busyTimer.Elapsed;
