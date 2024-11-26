@@ -7,7 +7,7 @@
         x:Class="GoogleTakeoutFixer.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="GoogleTakeoutFixer">
+        Title="{Binding Title}">
 
     <Grid RowDefinitions="Auto, 5, Auto,5, *" x:Name="RootGrid" HorizontalAlignment="Stretch"
           VerticalAlignment="Stretch">

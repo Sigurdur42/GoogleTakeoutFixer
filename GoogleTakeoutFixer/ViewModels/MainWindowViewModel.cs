@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using Config.Net;
@@ -24,6 +25,7 @@ public class MainWindowViewModel : ViewModelBase
 
     public string TimeElapsed => _busyTimer.Elapsed.ToString(@"hh\:mm\:ss");
     public string TimeRemaining { get; set; } = "Coming soon :)";
+    public string Title { get; init; }
 
     public bool IsProcessing
     {
@@ -96,7 +98,7 @@ public class MainWindowViewModel : ViewModelBase
         get => _settings.ScanOnly;
         set
         {
-            if (_settings?.ScanOnly == value) return;
+            if (_settings.ScanOnly == value) return;
             _settings!.ScanOnly = value;
             this.RaisePropertyChanged();
         }
@@ -117,6 +119,9 @@ public class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
+        var version = Assembly.GetEntryAssembly()?.GetName().Version;
+        Title = $"Papsi's Google Takeout Fixer V{version}";
+
         var special = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var path = Path.Combine(special, "GoogleTakeoutFixer", "GoogleTakeoutFixerSettings.json");
         _settings = new ConfigurationBuilder<ILocalSettings>()
@@ -142,17 +147,19 @@ public class MainWindowViewModel : ViewModelBase
                 ProgressMax = args.FilesTotal;
                 ProgressValue = args.FilesDone;
 
-                if (args.FilesTotal > 0 && args.FilesDone > 0)
+                if (args is not { FilesTotal: > 0, FilesDone: > 0 })
                 {
-                    var elapsed = _busyTimer.Elapsed;
-
-                    var remaining = elapsed * args.FilesTotal / args.FilesDone;
-                    TimeRemaining = remaining.ToString(@"hh\:mm\:ss");
-                    this.RaisePropertyChanged(nameof(TimeElapsed));
-                    this.RaisePropertyChanged(nameof(TimeRemaining));
-
-                    ItemsProgress = $"{args.FilesDone}/{args.FilesTotal} Files";
+                    return;
                 }
+
+                var elapsed = _busyTimer.Elapsed;
+
+                var remaining = elapsed * args.FilesTotal / args.FilesDone;
+                TimeRemaining = remaining.ToString(@"hh\:mm\:ss");
+                this.RaisePropertyChanged(nameof(TimeElapsed));
+                this.RaisePropertyChanged(nameof(TimeRemaining));
+
+                ItemsProgress = $"{args.FilesDone}/{args.FilesTotal} Files";
             });
         };
     }

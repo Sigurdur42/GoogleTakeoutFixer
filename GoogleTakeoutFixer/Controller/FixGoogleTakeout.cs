@@ -226,6 +226,8 @@ public class FixGoogleTakeout
                 case ".mov":
                 case ".mp4":
                 case ".mpg":
+                case ".3gp":
+                case ".gif":
                 case ".avi":
                     isPhoto = false;
                     break;
