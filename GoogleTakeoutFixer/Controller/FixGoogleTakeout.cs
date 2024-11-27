@@ -19,6 +19,8 @@ public class ImageData
 
 public class FixGoogleTakeout
 {
+    SharpExifTool.ExifTool exiftool = new SharpExifTool.ExifTool();
+
     private readonly ProgressEventArgs _progress = new()
     {
         CurrentAction = "",
@@ -34,7 +36,6 @@ public class FixGoogleTakeout
         _progress.CurrentAction = "Canceling...";
         InvokeProgress();
     }
-
 
     public event EventHandler<ProgressEventArgs>? ProgressChanged;
 
@@ -63,8 +64,6 @@ public class FixGoogleTakeout
 
     private void CopyAndProcess(ILocalSettings settings)
     {
-        using var exiftool = new SharpExifTool.ExifTool();
-
         var outputFolder = settings.OutputFolder;
         if (!Directory.Exists(outputFolder))
         {
@@ -75,20 +74,22 @@ public class FixGoogleTakeout
 
         _progress.FilesTotal = _data.Count;
 
-        Parallel.ForEach(_data, file =>
-        {
-            if (_cancelRunning)
+        Parallel.ForEach(_data,
+            new ParallelOptions { MaxDegreeOfParallelism = 1 },
+            file =>
             {
-                return;
-            }
+                if (_cancelRunning)
+                {
+                    return;
+                }
 
-            CopyAndUpdateSingleFile(settings, file);
-        });
+                CopyAndUpdateSingleFile(settings, file, exiftool);
+            });
     }
 
-    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data)
+    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data, ExifTool exiftool)
     {
-        using var exiftool = new SharpExifTool.ExifTool();
+        // using var exiftool = new SharpExifTool.ExifTool();
 
         var targetImagePart = data.Image.Substring(
             settings.InputFolder.Length,
@@ -212,6 +213,7 @@ public class FixGoogleTakeout
         var indexed = files.ToDictionary(s => s);
         foreach (var file in files.Select(f => new FileInfo(f)))
         {
+            var ignoreFile = false;
             var isPhoto = true;
             switch (file.Extension.ToLowerInvariant())
             {
@@ -231,8 +233,9 @@ public class FixGoogleTakeout
                 case ".avi":
                     isPhoto = false;
                     break;
-                
+
                 case ".json":
+                    ignoreFile = true;
                     // ignore json here
                     break;
 
@@ -240,6 +243,11 @@ public class FixGoogleTakeout
                     _progress.CurrentAction = $"Found invalid extension <{file.Extension}> in file <{file.FullName}>.";
                     InvokeProgress();
                     continue;
+            }
+
+            if (ignoreFile)
+            {
+                continue;
             }
 
             string? foundDataFile = null;
