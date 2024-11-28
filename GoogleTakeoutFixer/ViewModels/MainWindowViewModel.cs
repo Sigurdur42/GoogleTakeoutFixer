@@ -128,10 +128,16 @@ public class MainWindowViewModel : ViewModelBase
             .UseJsonFile(path)
             .Build();
 
-        if (_settings.NumberOfLinesShown < 1000)
+        if (_settings.NumberOfLinesShown < 10000)
         {
-            _settings.NumberOfLinesShown = 2000;
+            _settings.NumberOfLinesShown = 20000;
         }
+
+        _fixGoogleTakeout.ProgressDone += (sender, args) =>
+        {
+            IsProcessing = false;
+            _busyTimer.Stop();
+        };
 
         _fixGoogleTakeout.ProgressChanged += (sender, args) =>
         {
@@ -167,20 +173,12 @@ public class MainWindowViewModel : ViewModelBase
     public void StartScan()
     {
         ProgressViewModels.Clear();
-        Task.Run(() =>
+        Task.Run(async () =>
         {
             // TODO: Lock UI while running
-            try
-            {
-                _busyTimer.Restart();
-                IsProcessing = true;
-                _fixGoogleTakeout.Scan(_settings);
-            }
-            finally
-            {
-                IsProcessing = false;
-                _busyTimer.Stop();
-            }
+            _busyTimer.Restart();
+            IsProcessing = true;
+            await _fixGoogleTakeout.Scan(_settings);
         });
     }
 

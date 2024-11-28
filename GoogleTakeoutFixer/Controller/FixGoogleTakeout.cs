@@ -5,8 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using GoogleTakeoutFixer.Models;
-using Microsoft.VisualBasic.FileIO;
-using SharpExifTool;
 
 namespace GoogleTakeoutFixer.Controller;
 
@@ -19,7 +17,7 @@ public class ImageData
 
 public class FixGoogleTakeout
 {
-    SharpExifTool.ExifTool exiftool = new SharpExifTool.ExifTool();
+    private readonly ExifToolWrapper _exiftool = new();
 
     private readonly ProgressEventArgs _progress = new()
     {
@@ -38,15 +36,18 @@ public class FixGoogleTakeout
     }
 
     public event EventHandler<ProgressEventArgs>? ProgressChanged;
+    public event EventHandler? ProgressDone;
 
-    public void Scan(ILocalSettings settings)
+    public async Task Scan(ILocalSettings settings)
     {
         try
         {
+            await _exiftool.DetectExifTool();
+
             _cancelRunning = false;
             _data.Clear();
             _progress.FilesDone = 0;
-            ScanInputFolder(settings.InputFolder);
+            await ScanInputFolder(settings.InputFolder);
 
             if (settings.ScanOnly)
             {
@@ -54,11 +55,13 @@ public class FixGoogleTakeout
             }
 
             CopyAndProcess(settings);
+
+            InvokeProgress("Done.");
+            ProgressDone?.Invoke(this, EventArgs.Empty);
         }
-        finally
+        catch (Exception error)
         {
-            _progress.CurrentAction = "Done.";
-            InvokeProgress();
+            InvokeError(error.Message + Environment.NewLine + "Aborting now.");
         }
     }
 
@@ -74,23 +77,22 @@ public class FixGoogleTakeout
 
         _progress.FilesTotal = _data.Count;
 
-        Parallel.ForEach(_data,
-            new ParallelOptions { MaxDegreeOfParallelism = 1 },
-            file =>
+        var maxDegreeOfParallelism = Environment.ProcessorCount / 2;
+        Parallel.ForEachAsync(_data,
+            new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism  },
+            async (file, token) =>
             {
                 if (_cancelRunning)
                 {
                     return;
                 }
 
-                CopyAndUpdateSingleFile(settings, file, exiftool);
-            });
+                await CopyAndUpdateSingleFile(settings, file);
+            }).Wait();
     }
 
-    private void CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data, ExifTool exiftool)
+    private async Task CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data)
     {
-        // using var exiftool = new SharpExifTool.ExifTool();
-
         var targetImagePart = data.Image.Substring(
             settings.InputFolder.Length,
             data.Image.Length - settings.InputFolder.Length);
@@ -100,8 +102,7 @@ public class FixGoogleTakeout
         {
             if (!targetFile.Directory!.Exists)
             {
-                _progress.CurrentAction = $"Creating output folder: {targetFile.Directory}.";
-                InvokeProgress();
+                InvokeProgress($"Creating output folder: {targetFile.Directory}.");
                 targetFile.Directory.Create();
             }
 
@@ -110,86 +111,91 @@ public class FixGoogleTakeout
             var copyElapsed = stopwatch.Elapsed;
             if (!string.IsNullOrWhiteSpace(data.JsonData) && File.Exists(data.JsonData))
             {
-                var result = exiftool.Execute(
-                    "-dateFormat",
-                    "%s",
-                    " -tagsfromfile",
-                    data.JsonData,
-                    "-DateTimeOriginal<PhotoTakenTimeTimestamp",
-                    // "-FileCreateDate<PhotoTakenTimeTimestamp",
-                    "-FileModifyDate<PhotoTakenTimeTimestamp",
-                    "-overwrite_original",
+                var arguments = new List<string>();
+                arguments.Add("-dateFormat");
+                arguments.Add("%s");
+                arguments.Add("-tagsfromfile");
+                arguments.Add(data.JsonData);
+                arguments.Add("-DateTimeOriginal<PhotoTakenTimeTimestamp");
+                // arguments.Add("-FileCreateDate<PhotoTakenTimeTimestamp");
+                arguments.Add("-FileModifyDate<PhotoTakenTimeTimestamp");
+                arguments.Add("-overwrite_original");
 
-                    // Handle potentially incorrect maker notes
-                    // See https://exiftool.org/faq.html#Q15
-                    "-F",
+                // Handle potentially incorrect maker notes
+                // See https://exiftool.org/faq.html#Q15
+                arguments.Add("-F");
 
-                    // Last argument has to be the file
-                    targetFile.FullName
-                );
+                // Last argument has to be the file
+                arguments.Add(targetFile.FullName);
+
+                var result = await _exiftool.RunExifToolAsync(arguments.ToArray());
 
                 var exifElapsed = stopwatch.Elapsed;
                 stopwatch.Stop();
-                _progress.CurrentAction =
-                    $"({result}[{copyElapsed}|{exifElapsed - copyElapsed}]) Copied and updated EXIF of {targetFile.FullName}.";
+
+                var parts = new List<string>
+                {
+                    $"({copyElapsed}) Copied and updated EXIF of {targetFile.FullName}.",
+                    $"Exit Code: {result.ExitCode}, Elapsed Time: {result.ExecutionTime}"
+                };
+
+                if (!string.IsNullOrWhiteSpace(result.StandardOutput))
+                {
+                    parts.Add($"StdOut: {result.StandardOutput}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(result.StandardError))
+                {
+                    parts.Add($"StdOut: {result.StandardError}");
+                }
+
+                InvokeFileDone(string.Join(Environment.NewLine, parts));
             }
             else
             {
-                _progress.CurrentAction = $"([{copyElapsed}) Copied {targetFile.FullName}.";
+                InvokeFileDone($"([{copyElapsed}) Copied {targetFile.FullName}.");
             }
         }
         catch (Exception e)
         {
-            _progress.CurrentAction = $"Failed to copy image: {data.Image} to {targetFile} ({e.Message})";
-            InvokeError();
-        }
-        finally
-        {
-            InvokeFileDone();
+            InvokeError($"Failed to copy image: {data.Image} to {targetFile} ({e.Message})");
         }
     }
 
-    private void ScanInputFolder(string inputFolder)
+    private async Task ScanInputFolder(string inputFolder)
     {
-        _progress.CurrentAction = "Scanning input folder...";
-        InvokeProgress();
+        InvokeProgress("Scanning input folder...");
 
         if (!Directory.Exists(inputFolder))
         {
-            _progress.IsError = true;
-            _progress.CurrentAction = "Input folder does not exist.";
-            InvokeProgress();
+            InvokeError("Input folder does not exist.");
             return;
         }
 
-        LookForFolder(inputFolder);
+        await LookForFolder(inputFolder);
 
         var total = _data.Count;
         var missingJson = _data.Where(x => string.IsNullOrWhiteSpace(x.JsonData)).ToArray();
         var photos = _data.Count(x => x.IsPhoto);
 
-        _progress.CurrentAction =
-            $"{total} files ({missingJson.Length} json files missing, {photos} photos, {total - photos} videos).";
-        InvokeProgress();
+        InvokeProgress($"{total} files ({missingJson.Length} json files missing, {photos} photos, {total - photos} videos).");
     }
 
-    private void LookForFolder(string inputFolder)
+    private async Task LookForFolder(string inputFolder)
     {
         // Look for files in this folder
-        _progress.CurrentAction = $"Scanning <{inputFolder}>...";
-        InvokeProgress();
+        InvokeProgress($"Scanning <{inputFolder}>...");
 
         var files = Directory.GetFiles(inputFolder);
         var analysed = AssignData(files);
         _data.AddRange(analysed);
 
-        _progress.CurrentAction = $"Found {analysed.Count} in <{inputFolder}>...";
-        InvokeProgress();
+        InvokeProgress($"Found {analysed.Count} in <{inputFolder}>...");
 
         var folders = Directory.GetDirectories(inputFolder);
         foreach (var folder in folders)
         {
-            LookForFolder(folder);
+            await LookForFolder(folder);
         }
     }
 
@@ -240,8 +246,7 @@ public class FixGoogleTakeout
                     break;
 
                 default:
-                    _progress.CurrentAction = $"Found invalid extension <{file.Extension}> in file <{file.FullName}>.";
-                    InvokeProgress();
+                    InvokeProgress($"Found invalid extension <{file.Extension}> in file <{file.FullName}>.");
                     continue;
             }
 
@@ -297,11 +302,11 @@ public class FixGoogleTakeout
         return result;
     }
 
-    private void InvokeProgress()
+    private void InvokeProgress(string? message = null)
     {
         var progress = new ProgressEventArgs()
         {
-            CurrentAction = _progress.CurrentAction,
+            CurrentAction = message ?? _progress.CurrentAction,
             IsError = false,
             FilesDone = _progress.FilesDone,
             FilesTotal = _progress.FilesTotal,
@@ -309,12 +314,12 @@ public class FixGoogleTakeout
         ProgressChanged?.Invoke(this, progress);
     }
 
-    private void InvokeFileDone()
+    private void InvokeFileDone(string message)
     {
         _progress.FilesDone += 1;
         var progress = new ProgressEventArgs()
         {
-            CurrentAction = _progress.CurrentAction,
+            CurrentAction = message,
             IsError = false,
             FilesDone = _progress.FilesDone,
             FilesTotal = _progress.FilesTotal,
@@ -322,11 +327,11 @@ public class FixGoogleTakeout
         ProgressChanged?.Invoke(this, progress);
     }
 
-    private void InvokeError()
+    private void InvokeError(string message)
     {
         var progress = new ProgressEventArgs()
         {
-            CurrentAction = _progress.CurrentAction,
+            CurrentAction = message,
             IsError = true,
             FilesDone = _progress.FilesDone,
             FilesTotal = _progress.FilesTotal,

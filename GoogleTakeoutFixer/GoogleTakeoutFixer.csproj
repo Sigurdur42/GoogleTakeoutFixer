@@ -22,9 +22,9 @@
         <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
         <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.2.0-rc2"/>
         <PackageReference Include="Avalonia.ReactiveUI" Version="11.2.0-rc2"/>
+        <PackageReference Include="CliWrap" Version="3.6.7" />
         <PackageReference Include="Config.Net.Yaml" Version="5.2.0" />
         <PackageReference Include="Semi.Avalonia" Version="11.2.0-beta1" />
         <PackageReference Include="Semi.Avalonia.DataGrid" Version="11.1.0.5-beta1" />
-        <PackageReference Include="SharpExifTool" Version="12.87.0.1" />
     </ItemGroup>
 </Project>

@@ -64,11 +64,6 @@
                      BorderThickness="1"
                      DisplayMemberBinding="{Binding Message}"
                      BorderBrush="Gray">
-                <!-- <DataGrid.Columns> -->
-                <!--     <DataGridTextColumn Header="Date" -->
-                <!--                         Binding="{Binding Message}" /> -->
-                <!-- -->
-                <!-- </DataGrid.Columns> -->
             </ListBox>
         </Grid>
     </Grid>
