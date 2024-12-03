@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using Config.Net;
@@ -45,7 +47,7 @@ public class MainWindowViewModel : ViewModelBase
         {
             if (_itemsProgress == value) return;
             _itemsProgress = value;
-            this.RaisePropertyChanged();
+            // this.RaisePropertyChanged();
         }
     }
 
@@ -56,7 +58,7 @@ public class MainWindowViewModel : ViewModelBase
         {
             if (_progressMax == value) return;
             _progressMax = value;
-            this.RaisePropertyChanged();
+            // this.RaisePropertyChanged();
         }
     }
 
@@ -67,7 +69,7 @@ public class MainWindowViewModel : ViewModelBase
         {
             if (_progressValue == value) return;
             _progressValue = value;
-            this.RaisePropertyChanged();
+            // this.RaisePropertyChanged();
         }
     }
 
@@ -115,7 +117,8 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public ObservableCollection<ProgressViewModel> ProgressViewModels { get; } = [];
+    public ObservableCollection<string> ProgressMessages { get; } = [];
+    public ObservableCollection<string> ProgressErrors { get; } = [];
 
     public MainWindowViewModel()
     {
@@ -133,52 +136,78 @@ public class MainWindowViewModel : ViewModelBase
             _settings.NumberOfLinesShown = 20000;
         }
 
-        _fixGoogleTakeout.ProgressDone += (sender, args) =>
+        _fixGoogleTakeout.ItemDone += (sender, args) =>
         {
-            IsProcessing = false;
-            _busyTimer.Stop();
+            _progressDone++;
+            UpdateProgressData();
         };
 
-        _fixGoogleTakeout.ProgressChanged += (sender, args) =>
+        _fixGoogleTakeout.ItemCount += (sender, args) =>
         {
-            var item = new ProgressViewModel(args);
-            Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                while (ProgressViewModels.Count >= _settings.NumberOfLinesShown)
-                {
-                    ProgressViewModels.Clear();
-                }
-
-                ProgressViewModels.Insert(0, item);
-                ProgressMax = args.FilesTotal;
-                ProgressValue = args.FilesDone;
-
-                if (args is not { FilesTotal: > 0, FilesDone: > 0 })
-                {
-                    return;
-                }
-
-                var elapsed = _busyTimer.Elapsed;
-
-                var remaining = elapsed * args.FilesTotal / args.FilesDone;
-                TimeRemaining = remaining.ToString(@"hh\:mm\:ss");
-                this.RaisePropertyChanged(nameof(TimeElapsed));
-                this.RaisePropertyChanged(nameof(TimeRemaining));
-
-                ItemsProgress = $"{args.FilesDone}/{args.FilesTotal} Files";
-            });
+            _progressTotal = args;
+            UpdateProgressData();
         };
+
+        _fixGoogleTakeout.ItemError += (sender, args) => { ProgressErrors.Add(args); };
+
+        _fixGoogleTakeout.ItemProgress += (sender, message) => { ProgressMessages.Add(message); };
+    }
+
+    private int _progressTotal = 0;
+    private int _progressDone = 0;
+
+    private void UpdateProgressData()
+    {
+        if ((ProgressMax == _progressTotal) && (ProgressValue == _progressDone))
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            ProgressMax = _progressTotal;
+            ProgressValue = int.Min(_progressDone, _progressTotal);
+            var elapsed = _busyTimer.Elapsed;
+
+            var remaining = elapsed * _progressTotal / (_progressDone > 0 ? _progressDone : 1);
+            TimeRemaining = remaining.ToString(@"hh\:mm\:ss");
+            // this.RaisePropertyChanged(nameof(TimeElapsed));
+            // this.RaisePropertyChanged(nameof(TimeRemaining));
+
+            ItemsProgress = $"{ProgressValue}/{ProgressMax} Items";
+        });
     }
 
     public void StartScan()
     {
-        ProgressViewModels.Clear();
+        ProgressMessages.Clear();
+        ProgressErrors.Clear();
+        IsProcessing = true;
+        _busyTimer.Restart();
+        Task.Run(() =>
+        {
+            while (IsProcessing)
+            {
+                Thread.Sleep(1000 * 1);
+                this.RaisePropertyChanged(nameof(TimeElapsed));
+                this.RaisePropertyChanged(nameof(TimeRemaining));
+                this.RaisePropertyChanged(nameof(ItemsProgress));
+                this.RaisePropertyChanged(nameof(ProgressMessages));
+                this.RaisePropertyChanged(nameof(ProgressErrors));
+                this.RaisePropertyChanged(nameof(ProgressMax));
+                this.RaisePropertyChanged(nameof(ProgressValue));
+            }
+        });
+
         Task.Run(async () =>
         {
-            // TODO: Lock UI while running
-            _busyTimer.Restart();
-            IsProcessing = true;
-            await _fixGoogleTakeout.Scan(_settings);
+           
+           
+            await _fixGoogleTakeout.Scan(_settings).ContinueWith((task) =>
+            {
+                IsProcessing = false;
+                _busyTimer.Stop();
+            });
         });
     }
 

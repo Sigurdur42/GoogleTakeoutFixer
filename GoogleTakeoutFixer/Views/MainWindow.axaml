@@ -10,8 +10,8 @@
         Title="{Binding Title}">
 
     <Grid RowDefinitions="Auto, 5, Auto,5, *" x:Name="RootGrid" HorizontalAlignment="Stretch"
-          VerticalAlignment="Stretch">
-        <Grid RowDefinitions="Auto,2, Auto,2, Auto" ColumnDefinitions="Auto, *, Auto" Margin="5">
+          VerticalAlignment="Stretch" Margin="5">
+        <Grid RowDefinitions="Auto,2, Auto,2, Auto" ColumnDefinitions="Auto, *, Auto">
             <Label Grid.Column="0" Grid.Row="0">Source folder</Label>
             <Label Grid.Column="0" Grid.Row="2">Target Folder</Label>
 
@@ -54,17 +54,29 @@
                 <TextBlock Grid.Column="5" Margin="3,0,0,0" Text="{Binding TimeRemaining}" />
 
                 <Button Classes="Small" Grid.Column="6" Margin="5,0,0,0" IsEnabled="{Binding IsProcessing}"
-                        Click="OnCancelProcessing">Cancel</Button>
+                        Click="OnCancelProcessing">
+                    Cancel
+                </Button>
             </Grid>
-            <ListBox VerticalAlignment="Stretch"
-                     Margin="0"
-                     Grid.Row="1"
-                     ItemsSource="{Binding ProgressViewModels}"
-                     SelectionMode="Single"
-                     BorderThickness="1"
-                     DisplayMemberBinding="{Binding Message}"
-                     BorderBrush="Gray">
-            </ListBox>
+            <Grid Grid.Row="1" RowDefinitions="Auto, *, Auto, *">
+                <TextBlock>Messages</TextBlock>
+                <ListBox VerticalAlignment="Stretch"
+                         Grid.Row="1"
+                         Margin="0"
+                         ItemsSource="{Binding ProgressMessages}"
+                         SelectionMode="Single"
+                         BorderThickness="1"
+                         BorderBrush="Gray">
+                </ListBox>
+                <TextBlock Grid.Row="2">Errors</TextBlock>
+                <ListBox VerticalAlignment="Stretch"
+                         Margin="0"
+                         Grid.Row="3"
+                         ItemsSource="{Binding ProgressErrors}"
+                         SelectionMode="Single"
+                         BorderThickness="1"
+                         BorderBrush="Gray" />
+            </Grid>
         </Grid>
     </Grid>
 

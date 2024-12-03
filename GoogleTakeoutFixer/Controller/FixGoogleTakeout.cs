@@ -19,10 +19,6 @@ public class FixGoogleTakeout
 {
     private readonly ExifToolWrapper _exiftool = new();
 
-    private readonly ProgressEventArgs _progress = new()
-    {
-        CurrentAction = "",
-    };
 
     private readonly List<ImageData> _data = [];
 
@@ -31,12 +27,13 @@ public class FixGoogleTakeout
     public void CancelRunning()
     {
         _cancelRunning = true;
-        _progress.CurrentAction = "Canceling...";
-        InvokeProgress();
+        InvokeProgress("Canceling...");
     }
 
-    public event EventHandler<ProgressEventArgs>? ProgressChanged;
-    public event EventHandler? ProgressDone;
+    public event EventHandler<string>? ItemProgress;
+    public event EventHandler? ItemDone;
+    public event EventHandler<string>? ItemError;
+    public event EventHandler<int>? ItemCount;
 
     public async Task Scan(ILocalSettings settings)
     {
@@ -46,8 +43,10 @@ public class FixGoogleTakeout
 
             _cancelRunning = false;
             _data.Clear();
-            _progress.FilesDone = 0;
+
+            ItemCount?.Invoke(this, 2);
             await ScanInputFolder(settings.InputFolder);
+            InvokeItemDone();
 
             if (settings.ScanOnly)
             {
@@ -57,11 +56,14 @@ public class FixGoogleTakeout
             CopyAndProcess(settings);
 
             InvokeProgress("Done.");
-            ProgressDone?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception error)
         {
             InvokeError(error.Message + Environment.NewLine + "Aborting now.");
+        }
+        finally
+        {
+            ItemDone?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -70,16 +72,16 @@ public class FixGoogleTakeout
         var outputFolder = settings.OutputFolder;
         if (!Directory.Exists(outputFolder))
         {
-            _progress.CurrentAction = $"Creating output folder: {outputFolder}.";
-            InvokeProgress();
+            InvokeProgress($"Creating output folder: {outputFolder}.");
             Directory.Exists(outputFolder);
         }
 
-        _progress.FilesTotal = _data.Count;
+        var parts = _data.Count + _data.Sum(x => !string.IsNullOrWhiteSpace(x.JsonData) ? 1 : 0);
+        ItemCount?.Invoke(this, parts);
 
         var maxDegreeOfParallelism = Environment.ProcessorCount / 2;
         Parallel.ForEachAsync(_data,
-            new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism  },
+            new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
             async (file, token) =>
             {
                 if (_cancelRunning)
@@ -109,6 +111,8 @@ public class FixGoogleTakeout
             var stopwatch = Stopwatch.StartNew();
             File.Copy(data.Image, targetFile.FullName, true);
             var copyElapsed = stopwatch.Elapsed;
+            InvokeItemDone();
+
             if (!string.IsNullOrWhiteSpace(data.JsonData) && File.Exists(data.JsonData))
             {
                 var arguments = new List<string>();
@@ -147,13 +151,18 @@ public class FixGoogleTakeout
                 if (!string.IsNullOrWhiteSpace(result.StandardError))
                 {
                     parts.Add($"StdOut: {result.StandardError}");
+                    InvokeError(string.Join(Environment.NewLine, parts));
+                }
+                else
+                {
+                    InvokeProgress(string.Join(Environment.NewLine, parts));
                 }
 
-                InvokeFileDone(string.Join(Environment.NewLine, parts));
+                InvokeItemDone();
             }
             else
             {
-                InvokeFileDone($"([{copyElapsed}) Copied {targetFile.FullName}.");
+                InvokeProgress($"([{copyElapsed}) Copied {targetFile.FullName}.");
             }
         }
         catch (Exception e)
@@ -178,7 +187,8 @@ public class FixGoogleTakeout
         var missingJson = _data.Where(x => string.IsNullOrWhiteSpace(x.JsonData)).ToArray();
         var photos = _data.Count(x => x.IsPhoto);
 
-        InvokeProgress($"{total} files ({missingJson.Length} json files missing, {photos} photos, {total - photos} videos).");
+        InvokeProgress(
+            $"{total} files ({missingJson.Length} json files missing, {photos} photos, {total - photos} videos).");
     }
 
     private async Task LookForFolder(string inputFolder)
@@ -302,40 +312,17 @@ public class FixGoogleTakeout
         return result;
     }
 
-    private void InvokeProgress(string? message = null)
+    private void InvokeProgress(string message)
     {
-        var progress = new ProgressEventArgs()
-        {
-            CurrentAction = message ?? _progress.CurrentAction,
-            IsError = false,
-            FilesDone = _progress.FilesDone,
-            FilesTotal = _progress.FilesTotal,
-        };
-        ProgressChanged?.Invoke(this, progress);
+        ItemProgress?.Invoke(this, message);
     }
 
-    private void InvokeFileDone(string message)
-    {
-        _progress.FilesDone += 1;
-        var progress = new ProgressEventArgs()
-        {
-            CurrentAction = message,
-            IsError = false,
-            FilesDone = _progress.FilesDone,
-            FilesTotal = _progress.FilesTotal,
-        };
-        ProgressChanged?.Invoke(this, progress);
-    }
+    private void InvokeItemDone()
+        => ItemDone?.Invoke(this, EventArgs.Empty);
+
 
     private void InvokeError(string message)
     {
-        var progress = new ProgressEventArgs()
-        {
-            CurrentAction = message,
-            IsError = true,
-            FilesDone = _progress.FilesDone,
-            FilesTotal = _progress.FilesTotal,
-        };
-        ProgressChanged?.Invoke(this, progress);
+        ItemError?.Invoke(this, message);
     }
 }
