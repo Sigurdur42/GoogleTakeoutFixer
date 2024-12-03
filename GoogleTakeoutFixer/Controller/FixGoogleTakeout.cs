@@ -79,7 +79,7 @@ public class FixGoogleTakeout
         var parts = _data.Count + _data.Sum(x => !string.IsNullOrWhiteSpace(x.JsonData) ? 1 : 0);
         ItemCount?.Invoke(this, parts);
 
-        var maxDegreeOfParallelism = Environment.ProcessorCount / 2;
+        var maxDegreeOfParallelism = 4; // Environment.ProcessorCount / 2;
         Parallel.ForEachAsync(_data,
             new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
             async (file, token) =>

@@ -117,7 +117,7 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public ObservableCollection<string> ProgressMessages { get; } = [];
+    public List<string> ProgressMessages { get; } = [];
     public ObservableCollection<string> ProgressErrors { get; } = [];
 
     public MainWindowViewModel()
