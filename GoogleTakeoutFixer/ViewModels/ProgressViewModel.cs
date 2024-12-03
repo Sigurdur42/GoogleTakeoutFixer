@@ -59,7 +59,7 @@ public class ProgressViewModel : ReactiveObject, IDisposable
             if (_currentValue == value) return;
             _currentValue = value;
             Message = $"{CurrentValue} / {MaxValue}";
-
+            var elapsed = _timer.Elapsed;
             if (CurrentValue == MaxValue && MaxValue > 0)
             {
                 StopTimer();
@@ -67,11 +67,14 @@ public class ProgressViewModel : ReactiveObject, IDisposable
             }
             else
             {
-                var remaining = _timer.Elapsed * MaxValue / (CurrentValue > 0 ? CurrentValue : 1);
+                
+                var timePerItem = elapsed / (_currentValue > 0 ? _currentValue : 1);
+                var totalTime = timePerItem * _maxValue;
+                var remaining = totalTime - elapsed;
                 Remaining = remaining.ToString(@"hh\:mm\:ss");
             }
 
-            Elapsed = _timer.Elapsed.ToString(@"hh\:mm\:ss");
+            Elapsed = elapsed.ToString(@"hh\:mm\:ss");
             
            
             _hasChanged = true;

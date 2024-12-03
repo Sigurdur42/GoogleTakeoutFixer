@@ -139,8 +139,30 @@ public class FixGoogleTakeout
                     continue;
                 }
 
-                await UpdateSingleFileExifData(data);
-                jsonUpdates++;
+                var updateBatch = new List<ImageData>();
+                updateBatch.Add(data);
+                for (var i = 0; i < 10; i++)
+                {
+                    if (!_exifUpdateQueue.TryDequeue(out data))
+                    {
+                        i = 1000;
+                    }
+                    else
+                    {
+                        updateBatch.Add(data);
+                    }
+                }
+                
+                var options = new ParallelOptions()
+                {
+                    MaxDegreeOfParallelism = settings.ProcessorCount,
+                };
+
+                await Parallel.ForEachAsync(updateBatch, options, async (imageData, ct) =>
+                {
+                    await UpdateSingleFileExifData(imageData);
+                    jsonUpdates++;
+                });
             }
 
             ReportAllDOne?.Invoke(this, EventArgs.Empty);
@@ -199,7 +221,7 @@ public class FixGoogleTakeout
                     InvokeProgress(string.Join(Environment.NewLine, parts));
                 }
 
-                Trace.WriteLine(string.Join(Environment.NewLine, parts));
+                // Trace.WriteLine(string.Join(Environment.NewLine, parts));
 
                 ReportExifUpdated?.Invoke(this, EventArgs.Empty);
             }

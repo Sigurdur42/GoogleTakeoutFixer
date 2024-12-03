@@ -97,6 +97,18 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public int MaxProcessorCount => Environment.ProcessorCount;
+    
+  public int ProcessorCount
+    {
+        get => _settings.ProcessorCount;
+        set
+        {
+            if (_settings.ProcessorCount == value) return;
+            _settings!.ProcessorCount = value;
+            this.RaisePropertyChanged();
+        }
+    }
 
     public List<string> ProgressMessages { get; } = [];
     public ObservableCollection<string> ProgressErrors { get; } = [];
@@ -111,6 +123,11 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         _settings = new ConfigurationBuilder<ILocalSettings>()
             .UseJsonFile(path)
             .Build();
+
+        if (_settings.ProcessorCount == 0)
+        {
+            ProcessorCount = 3;
+        }
 
         if (_settings.NumberOfLinesShown < 10000)
         {

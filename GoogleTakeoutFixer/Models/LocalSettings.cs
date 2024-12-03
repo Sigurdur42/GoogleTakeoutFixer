@@ -8,4 +8,5 @@ public interface ILocalSettings
     int NumberOfLinesShown { get; set; }
     
     bool OverWriteExistingInCopy { get; set; }
+    int ProcessorCount { get; set; }
 }
