@@ -6,4 +6,5 @@ public interface ILocalSettings
     string OutputFolder { get; set; }
     bool ScanOnly { get; set; }
     int NumberOfLinesShown { get; set; }
+    
 }

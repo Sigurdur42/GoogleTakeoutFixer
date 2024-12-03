@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using GoogleTakeoutFixer.Models;
 
@@ -10,9 +12,10 @@ namespace GoogleTakeoutFixer.Controller;
 
 public class ImageData
 {
-    public required string Image { get; set; }
-    public string? JsonData { get; set; }
-    public bool IsPhoto { get; set; }
+    public required string Image { get; init; }
+    public required FileInfo ImageInTargetFolder { get; init; }
+    public string? JsonData { get; init; }
+    public bool IsPhoto { get; init; }
 }
 
 public class FixGoogleTakeout
@@ -21,6 +24,8 @@ public class FixGoogleTakeout
 
 
     private readonly List<ImageData> _data = [];
+
+    private readonly ConcurrentQueue<ImageData> _exifUpdateQueue = new();
 
     private bool _cancelRunning = false;
 
@@ -45,7 +50,7 @@ public class FixGoogleTakeout
             _data.Clear();
 
             ItemCount?.Invoke(this, 2);
-            await ScanInputFolder(settings.InputFolder);
+            await ScanInputFolder(settings);
             InvokeItemDone();
 
             if (settings.ScanOnly)
@@ -79,42 +84,81 @@ public class FixGoogleTakeout
         var parts = _data.Count + _data.Sum(x => !string.IsNullOrWhiteSpace(x.JsonData) ? 1 : 0);
         ItemCount?.Invoke(this, parts);
 
-        var maxDegreeOfParallelism = 4; // Environment.ProcessorCount / 2;
-        Parallel.ForEachAsync(_data,
-            new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
-            async (file, token) =>
+        // TODO: Add cancellation token
+        var copyDone = false;
+        var task = Task.Run(() =>
             {
-                if (_cancelRunning)
+                while (_data.Count != 0 && !_cancelRunning)
                 {
-                    return;
-                }
+                    var data = _data[0];
+                    var targetFile = data.ImageInTargetFolder;
+                    try
+                    {
+                        if (!targetFile.Directory!.Exists)
+                        {
+                            InvokeProgress($"Creating output folder: {targetFile.Directory}.");
+                            targetFile.Directory.Create();
+                        }
 
-                await CopyAndUpdateSingleFile(settings, file);
-            }).Wait();
+                        Trace.WriteLine($"Copying file: {targetFile.FullName}...");
+                        var stopwatch = Stopwatch.StartNew();
+                        File.Copy(data.Image, targetFile.FullName, true);
+                        var copyElapsed = stopwatch.Elapsed;
+                        InvokeItemDone();
+                        Trace.WriteLine($"File copy took {copyElapsed} - {targetFile.FullName}...");
+
+                        _data.RemoveAt(0);
+                        _exifUpdateQueue.Enqueue(data);
+                    }
+                    catch (Exception error)
+                    {
+                        InvokeError($"Failed to copy image: {data.Image} to {targetFile} ({error.Message})");
+                    }
+                }
+            })
+            .ContinueWith((_) => copyDone = true);
+
+        var taskExif = Task.Run(async () =>
+        {
+            var exifDone = false;
+            while (!copyDone && !exifDone && !_cancelRunning)
+            {
+                if (!_exifUpdateQueue.TryDequeue(out var data))
+                {
+                    Trace.WriteLine($"Waiting for exif data to process...");
+                    Thread.Sleep(1 * 1000);
+                    continue;
+                }
+                
+                await UpdateSingleFileExifData(data);
+                exifDone = copyDone && _exifUpdateQueue.IsEmpty;
+            }
+        });
+
+        // var maxDegreeOfParallelism = 4; // Environment.ProcessorCount / 2;
+        // Parallel.ForEachAsync(_data,
+        //     new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
+        //     async (file, token) =>
+        //     {
+        //         if (_cancelRunning)
+        //         {
+        //             return;
+        //         }
+        //
+        //         await CopyAndUpdateSingleFile(settings, file);
+        //     }).Wait();
     }
 
-    private async Task CopyAndUpdateSingleFile(ILocalSettings settings, ImageData data)
-    {
-        var targetImagePart = data.Image.Substring(
-            settings.InputFolder.Length,
-            data.Image.Length - settings.InputFolder.Length);
-        var targetFile = new FileInfo(Path.Combine(settings.OutputFolder, targetImagePart));
 
+    private async Task UpdateSingleFileExifData(ImageData data)
+    {
         try
         {
-            if (!targetFile.Directory!.Exists)
-            {
-                InvokeProgress($"Creating output folder: {targetFile.Directory}.");
-                targetFile.Directory.Create();
-            }
-
-            var stopwatch = Stopwatch.StartNew();
-            File.Copy(data.Image, targetFile.FullName, true);
-            var copyElapsed = stopwatch.Elapsed;
-            InvokeItemDone();
-
             if (!string.IsNullOrWhiteSpace(data.JsonData) && File.Exists(data.JsonData))
             {
+                var stopwatch = Stopwatch.StartNew();
+                var targetFile = data.ImageInTargetFolder;
+
                 var arguments = new List<string>();
                 arguments.Add("-dateFormat");
                 arguments.Add("%s");
@@ -139,7 +183,7 @@ public class FixGoogleTakeout
 
                 var parts = new List<string>
                 {
-                    $"({copyElapsed}) Copied and updated EXIF of {targetFile.FullName}.",
+                    $"updated EXIF of {targetFile.FullName}.",
                     $"Exit Code: {result.ExitCode}, Elapsed Time: {result.ExecutionTime}"
                 };
 
@@ -157,22 +201,22 @@ public class FixGoogleTakeout
                 {
                     InvokeProgress(string.Join(Environment.NewLine, parts));
                 }
+                
+                Trace.WriteLine(string.Join(Environment.NewLine, parts));
 
                 InvokeItemDone();
-            }
-            else
-            {
-                InvokeProgress($"([{copyElapsed}) Copied {targetFile.FullName}.");
             }
         }
         catch (Exception e)
         {
-            InvokeError($"Failed to copy image: {data.Image} to {targetFile} ({e.Message})");
+            InvokeError($"Failed to copy image: {data.Image} to {data.ImageInTargetFolder.FullName} ({e.Message})");
         }
     }
 
-    private async Task ScanInputFolder(string inputFolder)
+    private async Task ScanInputFolder(ILocalSettings settings)
     {
+        var inputFolder = settings.InputFolder;
+
         InvokeProgress("Scanning input folder...");
 
         if (!Directory.Exists(inputFolder))
@@ -181,7 +225,7 @@ public class FixGoogleTakeout
             return;
         }
 
-        await LookForFolder(inputFolder);
+        await LookForFolder(settings, inputFolder);
 
         var total = _data.Count;
         var missingJson = _data.Where(x => string.IsNullOrWhiteSpace(x.JsonData)).ToArray();
@@ -191,13 +235,13 @@ public class FixGoogleTakeout
             $"{total} files ({missingJson.Length} json files missing, {photos} photos, {total - photos} videos).");
     }
 
-    private async Task LookForFolder(string inputFolder)
+    private async Task LookForFolder(ILocalSettings settings, string inputFolder)
     {
         // Look for files in this folder
         InvokeProgress($"Scanning <{inputFolder}>...");
 
         var files = Directory.GetFiles(inputFolder);
-        var analysed = AssignData(files);
+        var analysed = AssignData(settings, files);
         _data.AddRange(analysed);
 
         InvokeProgress($"Found {analysed.Count} in <{inputFolder}>...");
@@ -205,11 +249,11 @@ public class FixGoogleTakeout
         var folders = Directory.GetDirectories(inputFolder);
         foreach (var folder in folders)
         {
-            await LookForFolder(folder);
+            await LookForFolder(settings, folder);
         }
     }
 
-    private List<ImageData> AssignData(string[] files)
+    private List<ImageData> AssignData(ILocalSettings settings, string[] files)
     {
         var edited = new[]
         {
@@ -300,10 +344,16 @@ public class FixGoogleTakeout
                 }
             }
 
+            var sourceFileName = file.FullName;
+            var targetImagePart = sourceFileName.Substring(
+                settings.InputFolder.Length,
+                sourceFileName.Length - settings.InputFolder.Length);
+            var targetFile = Path.Combine(settings.OutputFolder, targetImagePart);
 
             result.Add(new ImageData()
             {
-                Image = file.FullName,
+                Image = sourceFileName,
+                ImageInTargetFolder = new FileInfo(targetFile),
                 JsonData = foundDataFile,
                 IsPhoto = isPhoto
             });
@@ -319,7 +369,6 @@ public class FixGoogleTakeout
 
     private void InvokeItemDone()
         => ItemDone?.Invoke(this, EventArgs.Empty);
-
 
     private void InvokeError(string message)
     {
