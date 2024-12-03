@@ -7,4 +7,5 @@ public interface ILocalSettings
     bool ScanOnly { get; set; }
     int NumberOfLinesShown { get; set; }
     
+    bool OverWriteExistingInCopy { get; set; }
 }

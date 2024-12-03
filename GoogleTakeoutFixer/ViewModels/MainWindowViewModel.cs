@@ -14,16 +14,17 @@ using ReactiveUI;
 
 namespace GoogleTakeoutFixer.ViewModels;
 
-public class MainWindowViewModel : ViewModelBase
+public class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly ILocalSettings _settings;
     private readonly FixGoogleTakeout _fixGoogleTakeout = new();
 
-    private int _progressMax = 0;
-    private int _progressValue = 0;
     private bool _isProcessing;
     private readonly Stopwatch _busyTimer = new();
     private string _itemsProgress = "0/0 Files";
+
+    public ProgressViewModel FileCopyProgress { get; } = new();
+    public ProgressViewModel UpdateExifProgress { get; } = new();
 
     public string TimeElapsed => _busyTimer.Elapsed.ToString(@"hh\:mm\:ss");
     public string TimeRemaining { get; set; } = "Coming soon :)";
@@ -47,31 +48,10 @@ public class MainWindowViewModel : ViewModelBase
         {
             if (_itemsProgress == value) return;
             _itemsProgress = value;
-            // this.RaisePropertyChanged();
+            this.RaisePropertyChanged();
         }
     }
 
-    public int ProgressMax
-    {
-        get => _progressMax;
-        set
-        {
-            if (_progressMax == value) return;
-            _progressMax = value;
-            // this.RaisePropertyChanged();
-        }
-    }
-
-    public int ProgressValue
-    {
-        get => _progressValue;
-        set
-        {
-            if (_progressValue == value) return;
-            _progressValue = value;
-            // this.RaisePropertyChanged();
-        }
-    }
 
     public string SourceFolder
     {
@@ -95,6 +75,17 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
+    public bool OverWriteExistingInCopy
+    {
+        get => _settings.OverWriteExistingInCopy;
+        set
+        {
+            if (_settings?.OverWriteExistingInCopy == value) return;
+            _settings!.OverWriteExistingInCopy = value;
+            this.RaisePropertyChanged();
+        }
+    }
+
     public bool ScanOnly
     {
         get => _settings.ScanOnly;
@@ -106,16 +97,6 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public int NumberOfLinesShown
-    {
-        get => _settings.NumberOfLinesShown;
-        set
-        {
-            if (_settings?.NumberOfLinesShown == value) return;
-            _settings!.NumberOfLinesShown = value;
-            this.RaisePropertyChanged();
-        }
-    }
 
     public List<string> ProgressMessages { get; } = [];
     public ObservableCollection<string> ProgressErrors { get; } = [];
@@ -136,83 +117,53 @@ public class MainWindowViewModel : ViewModelBase
             _settings.NumberOfLinesShown = 20000;
         }
 
-        _fixGoogleTakeout.ItemDone += (sender, args) =>
+        _fixGoogleTakeout.ReportFileCopied += (_, args) => { FileCopyProgress.CurrentValue += 1; };
+
+        _fixGoogleTakeout.ReportExifUpdated += (_, args) => { UpdateExifProgress.CurrentValue += 1; };
+
+        _fixGoogleTakeout.ReportFileCount += (_, args) => { FileCopyProgress.MaxValue = args; };
+
+        _fixGoogleTakeout.ReportExifCount += (_, args) => UpdateExifProgress.MaxValue = args;
+
+        _fixGoogleTakeout.ItemError += (_, args) => { ProgressErrors.Add(args); };
+
+        _fixGoogleTakeout.ItemProgress += (_, message) => { ProgressMessages.Add(message); };
+
+        _fixGoogleTakeout.ReportAllDOne += (_, args) =>
         {
-            _progressDone++;
-            UpdateProgressData();
+            IsProcessing = false;
+            _busyTimer.Stop();
         };
-
-        _fixGoogleTakeout.ItemCount += (sender, args) =>
-        {
-            _progressTotal = args;
-            UpdateProgressData();
-        };
-
-        _fixGoogleTakeout.ItemError += (sender, args) => { ProgressErrors.Add(args); };
-
-        _fixGoogleTakeout.ItemProgress += (sender, message) => { ProgressMessages.Add(message); };
-    }
-
-    private int _progressTotal = 0;
-    private int _progressDone = 0;
-
-    private void UpdateProgressData()
-    {
-        if ((ProgressMax == _progressTotal) && (ProgressValue == _progressDone))
-        {
-            return;
-        }
-
-        Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            ProgressMax = _progressTotal;
-            ProgressValue = int.Min(_progressDone, _progressTotal);
-            var elapsed = _busyTimer.Elapsed;
-
-            var remaining = elapsed * _progressTotal / (_progressDone > 0 ? _progressDone : 1);
-            TimeRemaining = remaining.ToString(@"hh\:mm\:ss");
-            // this.RaisePropertyChanged(nameof(TimeElapsed));
-            // this.RaisePropertyChanged(nameof(TimeRemaining));
-
-            ItemsProgress = $"{ProgressValue}/{ProgressMax} Items";
-        });
     }
 
     public void StartScan()
     {
         ProgressMessages.Clear();
         ProgressErrors.Clear();
+
+        FileCopyProgress.Reset();
+        UpdateExifProgress.Reset();
+
+        FileCopyProgress.StartTimer();
+        UpdateExifProgress.StartTimer();
+
         IsProcessing = true;
         _busyTimer.Restart();
-        Task.Run(() =>
-        {
-            while (IsProcessing)
-            {
-                Thread.Sleep(1000 * 1);
-                this.RaisePropertyChanged(nameof(TimeElapsed));
-                this.RaisePropertyChanged(nameof(TimeRemaining));
-                this.RaisePropertyChanged(nameof(ItemsProgress));
-                this.RaisePropertyChanged(nameof(ProgressMessages));
-                this.RaisePropertyChanged(nameof(ProgressErrors));
-                this.RaisePropertyChanged(nameof(ProgressMax));
-                this.RaisePropertyChanged(nameof(ProgressValue));
-            }
-        });
 
-        Task.Run(async () =>
-        {
-           
-           
-            await _fixGoogleTakeout.Scan(_settings).ContinueWith((task) =>
-            {
-                IsProcessing = false;
-                _busyTimer.Stop();
-            });
-        });
+        Task.Run(async () => { await _fixGoogleTakeout.Scan(_settings); });
     }
 
     public void CancelProcessing()
     {
         _fixGoogleTakeout.CancelRunning();
+
+        FileCopyProgress.StopTimer();
+        UpdateExifProgress.StopTimer();
+    }
+
+    public void Dispose()
+    {
+        FileCopyProgress.Dispose();
+        UpdateExifProgress.Dispose();
     }
 }

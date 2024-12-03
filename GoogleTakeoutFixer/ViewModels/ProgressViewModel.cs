@@ -1,16 +1,109 @@
-using GoogleTakeoutFixer.Controller;
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using ReactiveUI;
 
 namespace GoogleTakeoutFixer.ViewModels;
 
-public class ProgressViewModel
+public class ProgressViewModel : ReactiveObject, IDisposable
 {
-    public ProgressViewModel(ProgressEventArgs args)
+    private int _currentValue;
+    private bool _hasChanged;
+    private bool _isCancelled;
+    private int _maxValue;
+
+    private string _message = "";
+    private Stopwatch _timer = new();
+
+    public ProgressViewModel()
     {
-        Message = args.CurrentAction;
-        IsError = args.IsError;
+        Task.Run(() =>
+        {
+            while (!_isCancelled)
+            {
+                Thread.Sleep(500);
+                if (!_hasChanged) continue;
+                _hasChanged = false;
+                this.RaisePropertyChanged(nameof(MaxValue));
+                this.RaisePropertyChanged(nameof(CurrentValue));
+                this.RaisePropertyChanged(nameof(Message));
+                this.RaisePropertyChanged(nameof(Elapsed));
+                this.RaisePropertyChanged(nameof(Remaining));
+            }
+        });
     }
 
-    public bool IsError { get; set; }
+    public void StartTimer() => _timer = Stopwatch.StartNew();
+    public void StopTimer() => _timer.Stop();
 
-    public string Message { get; set; }
+    public int MaxValue
+    {
+        get => _maxValue;
+        set
+        {
+            if (_maxValue == value) return;
+            _maxValue = value;
+            _hasChanged = true;
+        }
+    }
+
+    public string Elapsed { get; private set; } = "";
+    public string Remaining { get; private set; } = "";
+
+    public int CurrentValue
+    {
+        get => _currentValue;
+        set
+        {
+            if (_currentValue == value) return;
+            _currentValue = value;
+            Message = $"{CurrentValue} / {MaxValue}";
+
+            if (CurrentValue == MaxValue && MaxValue > 0)
+            {
+                StopTimer();
+                Remaining = "";
+            }
+            else
+            {
+                var remaining = _timer.Elapsed * MaxValue / (CurrentValue > 0 ? CurrentValue : 1);
+                Remaining = remaining.ToString(@"hh\:mm\:ss");
+            }
+
+            Elapsed = _timer.Elapsed.ToString(@"hh\:mm\:ss");
+            
+           
+            _hasChanged = true;
+        }
+    }
+
+    public string Message
+    {
+        get => _message;
+        set
+        {
+            if (_message == value) return;
+            _message = value;
+            _hasChanged = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        StopUpdateTask();
+    }
+
+    private void StopUpdateTask()
+    {
+        _isCancelled = true;
+    }
+
+    public void Reset()
+    {
+        CurrentValue = 0;
+        MaxValue = 0;
+
+        _hasChanged = true;
+    }
 }

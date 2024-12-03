@@ -36,9 +36,13 @@ public class FixGoogleTakeout
     }
 
     public event EventHandler<string>? ItemProgress;
-    public event EventHandler? ItemDone;
+    public event EventHandler? ReportFileCopied;
+    public event EventHandler? ReportExifUpdated;
+
+    public event EventHandler? ReportAllDOne;
     public event EventHandler<string>? ItemError;
-    public event EventHandler<int>? ItemCount;
+    public event EventHandler<int>? ReportFileCount;
+    public event EventHandler<int>? ReportExifCount;
 
     public async Task Scan(ILocalSettings settings)
     {
@@ -49,9 +53,7 @@ public class FixGoogleTakeout
             _cancelRunning = false;
             _data.Clear();
 
-            ItemCount?.Invoke(this, 2);
             await ScanInputFolder(settings);
-            InvokeItemDone();
 
             if (settings.ScanOnly)
             {
@@ -66,10 +68,6 @@ public class FixGoogleTakeout
         {
             InvokeError(error.Message + Environment.NewLine + "Aborting now.");
         }
-        finally
-        {
-            ItemDone?.Invoke(this, EventArgs.Empty);
-        }
     }
 
     private void CopyAndProcess(ILocalSettings settings)
@@ -81,47 +79,58 @@ public class FixGoogleTakeout
             Directory.Exists(outputFolder);
         }
 
-        var parts = _data.Count + _data.Sum(x => !string.IsNullOrWhiteSpace(x.JsonData) ? 1 : 0);
-        ItemCount?.Invoke(this, parts);
+        var jsonUpdatesRequired = _data.Sum(x => !string.IsNullOrWhiteSpace(x.JsonData) ? 1 : 0);
+
+        ReportFileCount?.Invoke(this, _data.Count);
+        ReportExifCount?.Invoke(this, jsonUpdatesRequired);
 
         // TODO: Add cancellation token
-        var copyDone = false;
-        var task = Task.Run(() =>
-            {
-                while (_data.Count != 0 && !_cancelRunning)
-                {
-                    var data = _data[0];
-                    var targetFile = data.ImageInTargetFolder;
-                    try
-                    {
-                        if (!targetFile.Directory!.Exists)
-                        {
-                            InvokeProgress($"Creating output folder: {targetFile.Directory}.");
-                            targetFile.Directory.Create();
-                        }
 
-                        Trace.WriteLine($"Copying file: {targetFile.FullName}...");
+        var task = Task.Run(() =>
+        {
+            while (_data.Count != 0 && !_cancelRunning)
+            {
+                var data = _data[0];
+                var targetFile = data.ImageInTargetFolder;
+                try
+                {
+                    if (!targetFile.Directory!.Exists)
+                    {
+                        InvokeProgress($"Creating output folder: {targetFile.Directory}.");
+                        targetFile.Directory.Create();
+                    }
+
+                    // Trace.WriteLine($"Copying file: {targetFile.FullName}...");
+                    var exists = File.Exists(targetFile.FullName);
+                    if (!exists || settings.OverWriteExistingInCopy)
+                    {
                         var stopwatch = Stopwatch.StartNew();
                         File.Copy(data.Image, targetFile.FullName, true);
                         var copyElapsed = stopwatch.Elapsed;
-                        InvokeItemDone();
-                        Trace.WriteLine($"File copy took {copyElapsed} - {targetFile.FullName}...");
+                    }
 
-                        _data.RemoveAt(0);
+                    ReportFileCopied?.Invoke(this, EventArgs.Empty);
+                    // Trace.WriteLine($"File copy took {copyElapsed} - {targetFile.FullName}...");
+
+                    _data.RemoveAt(0);
+
+                    if (!string.IsNullOrWhiteSpace(data.JsonData) && File.Exists(data.JsonData))
+                    {
                         _exifUpdateQueue.Enqueue(data);
                     }
-                    catch (Exception error)
-                    {
-                        InvokeError($"Failed to copy image: {data.Image} to {targetFile} ({error.Message})");
-                    }
                 }
-            })
-            .ContinueWith((_) => copyDone = true);
+                catch (Exception error)
+                {
+                    InvokeError($"Failed to copy image: {data.Image} to {targetFile} ({error.Message})");
+                }
+            }
+        });
 
         var taskExif = Task.Run(async () =>
         {
-            var exifDone = false;
-            while (!copyDone && !exifDone && !_cancelRunning)
+            var jsonUpdates = 0;
+
+            while (jsonUpdates < jsonUpdatesRequired && !_cancelRunning)
             {
                 if (!_exifUpdateQueue.TryDequeue(out var data))
                 {
@@ -129,26 +138,14 @@ public class FixGoogleTakeout
                     Thread.Sleep(1 * 1000);
                     continue;
                 }
-                
+
                 await UpdateSingleFileExifData(data);
-                exifDone = copyDone && _exifUpdateQueue.IsEmpty;
+                jsonUpdates++;
             }
+
+            ReportAllDOne?.Invoke(this, EventArgs.Empty);
         });
-
-        // var maxDegreeOfParallelism = 4; // Environment.ProcessorCount / 2;
-        // Parallel.ForEachAsync(_data,
-        //     new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism },
-        //     async (file, token) =>
-        //     {
-        //         if (_cancelRunning)
-        //         {
-        //             return;
-        //         }
-        //
-        //         await CopyAndUpdateSingleFile(settings, file);
-        //     }).Wait();
     }
-
 
     private async Task UpdateSingleFileExifData(ImageData data)
     {
@@ -201,10 +198,10 @@ public class FixGoogleTakeout
                 {
                     InvokeProgress(string.Join(Environment.NewLine, parts));
                 }
-                
+
                 Trace.WriteLine(string.Join(Environment.NewLine, parts));
 
-                InvokeItemDone();
+                ReportExifUpdated?.Invoke(this, EventArgs.Empty);
             }
         }
         catch (Exception e)
@@ -368,7 +365,7 @@ public class FixGoogleTakeout
     }
 
     private void InvokeItemDone()
-        => ItemDone?.Invoke(this, EventArgs.Empty);
+        => ReportFileCopied?.Invoke(this, EventArgs.Empty);
 
     private void InvokeError(string message)
     {
